@@ -1,6 +1,9 @@
 <?php
 session_start();
 
+// Import shared database setup (Supabase / Live DB connection)
+require_once 'db.php';
+
 // Auth Guard: Direct unauthenticated users to login page
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
@@ -11,21 +14,10 @@ $user_id = $_SESSION['user_id'];
 $fullname = $_SESSION['fullname'] ?? 'User';
 $role = $_SESSION['role'] ?? 'Student';
 
-// Database Configuration
-$db_host = 'localhost';
-$db_name = 'reschedule_db';
-$db_user = 'root';
-$db_pass = '';
-
 $message = "";
 $statusClass = "";
 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-
     // Handle Schedule Slot Creation (Admins and Lecturers)
     if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_schedule']) && in_array($role, ['Administrator', 'Lecturer'])) {
         $course_id = intval($_POST['course_id'] ?? 0);
@@ -113,15 +105,27 @@ try {
     // Fetch courses dropdown data
     $courses = $pdo->query("SELECT id, course_code, course_name FROM courses ORDER BY course_code ASC")->fetchAll();
 
-    // Fetch Master Schedule
+    // Fetch Master Schedule (PostgreSQL compatible formatting and ordering)
     $scheduleQuery = "
-        SELECT s.id, s.day_of_week, DATE_FORMAT(s.start_time, '%H:%i') AS start_time, DATE_FORMAT(s.end_time, '%H:%i') AS end_time,
+        SELECT s.id, s.day_of_week, 
+               TO_CHAR(s.start_time::time, 'HH24:MI') AS start_time, 
+               TO_CHAR(s.end_time::time, 'HH24:MI') AS end_time,
                c.course_code, c.course_name, r.room_name, u.fullname AS lecturer_name
         FROM schedules s
         JOIN courses c ON s.course_id = c.id
         JOIN rooms r ON s.room_id = r.id
         LEFT JOIN users u ON c.lecturer_id = u.id
-        ORDER BY FIELD(s.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'), s.start_time ASC
+        ORDER BY 
+            CASE s.day_of_week
+                WHEN 'Monday' THEN 1
+                WHEN 'Tuesday' THEN 2
+                WHEN 'Wednesday' THEN 3
+                WHEN 'Thursday' THEN 4
+                WHEN 'Friday' THEN 5
+                WHEN 'Saturday' THEN 6
+                ELSE 7
+            END, 
+            s.start_time ASC
     ";
     $schedules = $pdo->query($scheduleQuery)->fetchAll();
 
