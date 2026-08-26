@@ -1,55 +1,85 @@
 <?php
 session_start();
-require_once 'db.php'; // Include Supabase helper
 
-// Auth Guard
+// Import shared database setup
+require_once 'db.php';
+
+// Auth Guard: Ensure user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-$user_id = $_SESSION['user_id'];
-$fullname = $_SESSION['fullname'] ?? 'User';
-$role = $_SESSION['role'] ?? 'Student';
+$user_id   = $_SESSION['user_id'];
+$username  = $_SESSION['username'] ?? 'User';
+$fullname  = $_SESSION['fullname'] ?? $username;
+$role      = $_SESSION['role'] ?? 'Student';
+$program_id = $_SESSION['program_id'] ?? null;
 
-$studentProgram = null;
-$classSchedules = [];
-$assessmentSchedules = [];
-$totalSchedules = 0;
-$totalCourses = 0;
-$dbError = '';
+$ca_schedules = [];
+$class_schedules = [];
+$error_message = '';
 
 try {
-    // Note: User profile data still uses local PDO or can be migrated. 
-    // Here we focus on fetching schedules from Supabase.
-    
-    // Example program code for student (Replace with your session logic if available)
-    $programCode = $_SESSION['program_code'] ?? 'BSc ICT';
-
-    if ($role === 'Student') {
-        // 1. Fetch Regular Weekly Classes from Supabase
-        $classResponse = supabase_request("schedules?programme=eq." . urlencode($programCode) . "&type=eq.Class");
-        if ($classResponse['status'] === 200) {
-            $classSchedules = $classResponse['data'];
-        }
-
-        // 2. Fetch Assessments (CA & Exams) from Supabase
-        $assessmentResponse = supabase_request("schedules?programme=eq." . urlencode($programCode) . "&type=in.(CA,Exam)");
-        if ($assessmentResponse['status'] === 200) {
-            $assessmentSchedules = $assessmentResponse['data'];
-        }
+    // 1. Fetch CA & Exam Schedules based on Role
+    if ($role === 'Student' && $program_id) {
+        $stmt_ca = $pdo->prepare("
+            SELECT s.*, COALESCE(c.course_code, s.course_code) AS course_code, 
+                   COALESCE(c.course_name, s.course_name) AS course_name, r.room_name 
+            FROM schedules s
+            LEFT JOIN courses c ON s.course_id = c.id
+            LEFT JOIN rooms r ON s.room_id = r.id
+            WHERE s.type IN ('CA', 'Exam') AND s.program_id = :program_id
+            ORDER BY s.date ASC, s.start_time ASC
+        ");
+        $stmt_ca->execute([':program_id' => $program_id]);
     } else {
-        // Fetch all schedules count for Admin/Lecturer
-        $allResponse = supabase_request("schedules?select=id");
-        if ($allResponse['status'] === 200) {
-            $totalSchedules = count($allResponse['data']);
-        }
+        $stmt_ca = $pdo->query("
+            SELECT s.*, COALESCE(c.course_code, s.course_code) AS course_code, 
+                   COALESCE(c.course_name, s.course_name) AS course_name, r.room_name 
+            FROM schedules s
+            LEFT JOIN courses c ON s.course_id = c.id
+            LEFT JOIN rooms r ON s.room_id = r.id
+            WHERE s.type IN ('CA', 'Exam')
+            ORDER BY s.date ASC, s.start_time ASC
+        ");
     }
-} catch (Exception $e) {
-    $dbError = $e->getMessage();
-}
+    $ca_schedules = $stmt_ca->fetchAll();
 
-$daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // 2. Fetch Regular Class Schedules based on Role
+    if ($role === 'Student' && $program_id) {
+        $stmt_class = $pdo->prepare("
+            SELECT s.*, COALESCE(c.course_code, s.course_code) AS course_code, 
+                   COALESCE(c.course_name, s.course_name) AS course_name, r.room_name 
+            FROM schedules s
+            LEFT JOIN courses c ON s.course_id = c.id
+            LEFT JOIN rooms r ON s.room_id = r.id
+            WHERE s.type = 'Class' AND s.program_id = :program_id
+            ORDER BY CASE s.day_of_week
+                WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3
+                WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 WHEN 'Saturday' THEN 6 ELSE 7 END,
+                s.start_time ASC
+        ");
+        $stmt_class->execute([':program_id' => $program_id]);
+    } else {
+        $stmt_class = $pdo->query("
+            SELECT s.*, COALESCE(c.course_code, s.course_code) AS course_code, 
+                   COALESCE(c.course_name, s.course_name) AS course_name, r.room_name 
+            FROM schedules s
+            LEFT JOIN courses c ON s.course_id = c.id
+            LEFT JOIN rooms r ON s.room_id = r.id
+            WHERE s.type = 'Class'
+            ORDER BY CASE s.day_of_week
+                WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3
+                WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 WHEN 'Saturday' THEN 6 ELSE 7 END,
+                s.start_time ASC
+        ");
+    }
+    $class_schedules = $stmt_class->fetchAll();
+
+} catch (PDOException $e) {
+    $error_message = "Database Error: " . $e->getMessage();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -58,81 +88,156 @@ $daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reschedule - Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .action-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .action-card { background: #ffffff; padding: 1.25rem; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center; text-decoration: none; color: #1e293b; transition: all 0.2s ease; }
+        .action-card:hover { border-color: #2563eb; transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .action-card h4 { margin: 0 0 0.5rem 0; color: #2563eb; }
+        .action-card p { margin: 0; font-size: 0.85rem; color: #64748b; }
+        .schedule-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+        .schedule-table th, .schedule-table td { padding: 0.75rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
+        .schedule-table th { background: #f8fafc; font-weight: 600; color: #475569; }
+        .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-ca { background: #fef3c7; color: #92400e; }
+        .badge-exam { background: #fee2e2; color: #991b1b; }
+        .badge-class { background: #e0f2fe; color: #075985; }
+    </style>
 </head>
 <body class="dashboard-body">
 
     <nav class="navbar">
         <div class="logo">Reschedule<span>.</span></div>
         <div class="user-profile">
-            <span><?php echo htmlspecialchars($fullname); ?> (<?php echo htmlspecialchars($role); ?>)</span>
+            <span><strong><?php echo htmlspecialchars($fullname); ?></strong> (<?php echo htmlspecialchars($role); ?>)</span>
             <a href="logout.php" class="btn-logout">Log Out</a>
         </div>
     </nav>
 
     <main class="dashboard-container">
-        <?php if (!empty($dbError)): ?>
-            <div class="alert alert-danger"><strong>Error:</strong> <?php echo htmlspecialchars($dbError); ?></div>
-        <?php endif; ?>
-
+        
         <header class="welcome-banner">
             <h1>Welcome, <?php echo htmlspecialchars($fullname); ?>!</h1>
+            <p>Access your portal tools, active timetable slots, and examination schedules below.</p>
         </header>
 
+        <?php if (!empty($error_message)): ?>
+            <div class="alert alert-danger" style="background:#fee2e2; color:#991b1b; padding:1rem; border-radius:6px; margin-bottom:1.5rem;">
+                <?php echo htmlspecialchars($error_message); ?>
+            </div>
+        <?php endif; ?>
+
+        <!-- Role-based Navigation & Management Section -->
+        <h3 style="margin-bottom: 1rem; color: #334155;">Management & Quick Actions</h3>
+        <div class="action-grid">
+            <a href="timetable.php" class="action-card">
+                <h4>Master Timetable</h4>
+                <p>View full weekly grid & room allocations</p>
+            </a>
+
+            <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
+                <a href="manage_courses.php" class="action-card">
+                    <h4>Manage Courses</h4>
+                    <p>Assign courses to academic programmes</p>
+                </a>
+                <a href="manage_resources.php" class="action-card">
+                    <h4>Manage Resources</h4>
+                    <p>Configure halls, labs, and capacities</p>
+                </a>
+                <a href="add_schedule.php" class="action-card">
+                    <h4>Add Schedule Slot</h4>
+                    <p>Create new class, CA, or Exam entry</p>
+                </a>
+            <?php endif; ?>
+
+            <?php if ($role === 'Administrator'): ?>
+                <a href="manage_users.php" class="action-card">
+                    <h4>Manage Users</h4>
+                    <p>Register & update student/lecturer accounts</p>
+                </a>
+            <?php endif; ?>
+        </div>
+
         <!-- CA & Exam Schedule Table -->
-        <div class="dash-card">
+        <div class="dash-card" style="margin-bottom: 2rem;">
             <h3>CA & Exam Schedule</h3>
-            <?php if (empty($assessmentSchedules)): ?>
-                <p>No scheduled CAs or Exams found.</p>
+            <?php if (empty($ca_schedules)): ?>
+                <p style="color: #64748b; margin-top: 1rem;">No scheduled CAs or Exams found.</p>
             <?php else: ?>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Type</th>
-                            <th>Title/Course</th>
-                            <th>Date/Time</th>
-                            <th>Venue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($assessmentSchedules as $as): ?>
+                <div style="overflow-x: auto;">
+                    <table class="schedule-table">
+                        <thead>
                             <tr>
-                                <td><?php echo htmlspecialchars($as['type'] ?? 'CA'); ?></td>
-                                <td><?php echo htmlspecialchars($as['title'] ?? $as['course_name'] ?? ''); ?></td>
-                                <td><?php echo htmlspecialchars($as['date_time'] ?? $as['date'] ?? ''); ?></td>
-                                <td><?php echo htmlspecialchars($as['venue'] ?? $as['room_name'] ?? ''); ?></td>
+                                <th>Type</th>
+                                <th>Course Code</th>
+                                <th>Course Title</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Venue</th>
+                                <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?><th>Action</th><?php endif; ?>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($ca_schedules as $s): ?>
+                                <tr>
+                                    <td>
+                                        <span class="badge <?php echo ($s['type'] === 'Exam') ? 'badge-exam' : 'badge-ca'; ?>">
+                                            <?php echo htmlspecialchars($s['type']); ?>
+                                        </span>
+                                    </td>
+                                    <td><strong><?php echo htmlspecialchars($s['course_code']); ?></strong></td>
+                                    <td><?php echo htmlspecialchars($s['course_name']); ?></td>
+                                    <td><?php echo htmlspecialchars($s['date'] ?? 'N/A'); ?></td>
+                                    <td><?php echo htmlspecialchars($s['start_time']); ?> - <?php echo htmlspecialchars($s['end_time']); ?></td>
+                                    <td><?php echo htmlspecialchars($s['room_name'] ?? 'Unassigned'); ?></td>
+                                    <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
+                                        <td><a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a></td>
+                                    <?php endif; ?>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             <?php endif; ?>
         </div>
 
         <!-- Weekly Class Timetable Table -->
         <div class="dash-card">
             <h3>Weekly Class Timetable</h3>
-            <?php if (empty($classSchedules)): ?>
-                <p>No active class slots found.</p>
+            <?php if (empty($class_schedules)): ?>
+                <p style="color: #64748b; margin-top: 1rem;">No active class slots found.</p>
             <?php else: ?>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Title/Course</th>
-                            <th>Time</th>
-                            <th>Venue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($classSchedules as $cs): ?>
+                <div style="overflow-x: auto;">
+                    <table class="schedule-table">
+                        <thead>
                             <tr>
-                                <td><?php echo htmlspecialchars($cs['title'] ?? $cs['course_name'] ?? ''); ?></td>
-                                <td><?php echo htmlspecialchars($cs['date_time'] ?? $cs['start_time'] ?? ''); ?></td>
-                                <td><?php echo htmlspecialchars($cs['venue'] ?? $cs['room_name'] ?? ''); ?></td>
+                                <th>Day</th>
+                                <th>Course Code</th>
+                                <th>Course Title</th>
+                                <th>Time</th>
+                                <th>Venue</th>
+                                <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?><th>Action</th><?php endif; ?>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($class_schedules as $s): ?>
+                                <tr>
+                                    <td><strong><?php echo htmlspecialchars($s['day_of_week']); ?></strong></td>
+                                    <td><strong><?php echo htmlspecialchars($s['course_code']); ?></strong></td>
+                                    <td><?php echo htmlspecialchars($s['course_name']); ?></td>
+                                    <td><?php echo htmlspecialchars($s['start_time']); ?> - <?php echo htmlspecialchars($s['end_time']); ?></td>
+                                    <td><?php echo htmlspecialchars($s['room_name'] ?? 'Unassigned'); ?></td>
+                                    <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
+                                        <td><a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a></td>
+                                    <?php endif; ?>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             <?php endif; ?>
         </div>
+
     </main>
+
 </body>
 </html>
