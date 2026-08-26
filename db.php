@@ -48,7 +48,7 @@ function supabase_request($endpoint, $method = 'GET', $data = null) {
 // --- SUPABASE DIRECT POSTGRESQL PDO CONNECTION ---
 // Get these exact credentials from: Supabase Dashboard -> Project Settings -> Database -> Connection string (URI/PDO)
 
-$host = 'db.rprdeqymghipjhjrvagr.supabase.co'; // Your project ID host
+$host = 'db.fxahpgeprmhwowxdrpeo.supabase.co'; // Your project ID host
 $db   = 'postgres';                            // Default database name
 $user = 'postgres';                            // Default user name
 $pass = 'eC0UQPLqSsOYMUuy';           // Replace with your actual database password
