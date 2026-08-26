@@ -1,17 +1,14 @@
 <?php
 session_start();
 
+// Import shared database setup (Supabase PostgreSQL connection)
+require_once 'db.php';
+
 // If already logged in, redirect to dashboard
 if (isset($_SESSION['user_id'])) {
     header("Location: dashboard.php");
     exit();
 }
-
-// Database Configuration
-$db_host = 'localhost';
-$db_name = 'reschedule_db';
-$db_user = 'root';
-$db_pass = '';
 
 $message = "";
 $statusClass = "";
@@ -22,32 +19,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = trim($_POST['password'] ?? '');
 
     if (empty($fullname) || empty($password)) {
-        $message = "Please enter both your Full Name and Password.";
+        $message = "Please enter both Full Name and Password.";
         $statusClass = "error";
     } else {
         try {
-            $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]);
-
-            // Query user by Full Name
-            $stmt = $pdo->prepare("SELECT id, fullname, role, password_hash FROM users WHERE fullname = :fullname");
+            // Query user using shared $pdo from db.php
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE fullname = :fullname LIMIT 1");
             $stmt->execute([':fullname' => $fullname]);
             $user = $stmt->fetch();
 
-            // Verify password against stored hash
             if ($user && password_verify($password, $user['password_hash'])) {
                 // Set session variables
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['fullname'] = $user['fullname'];
                 $_SESSION['role'] = $user['role'];
+                $_SESSION['program_id'] = $user['program_id'];
 
-                // Redirect to main dashboard
                 header("Location: dashboard.php");
                 exit();
             } else {
-                $message = "Invalid Full Name or Password. Please try again.";
+                $message = "Invalid Full Name or Password.";
                 $statusClass = "error";
             }
         } catch (PDOException $e) {
