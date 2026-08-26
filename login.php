@@ -1,49 +1,41 @@
 <?php
 session_start();
-
-// Import shared database setup (Supabase PostgreSQL connection)
 require_once 'db.php';
 
-// If already logged in, redirect to dashboard
-if (isset($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
-    exit();
-}
-
-$message = "";
-$statusClass = "";
-$fullname = "";
+$error = '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $fullname = trim($_POST['fullname'] ?? '');
+    $login_input = trim($_POST['username_or_student_number'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
-    if (empty($fullname) || empty($password)) {
-        $message = "Please enter both Full Name and Password.";
-        $statusClass = "error";
+    if (empty($login_input) || empty($password)) {
+        $error = "Please fill in all fields.";
     } else {
         try {
-            // Query user using shared $pdo from db.php
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE fullname = :fullname LIMIT 1");
-            $stmt->execute([':fullname' => $fullname]);
+            // Check matching username OR student_number
+            $stmt = $pdo->prepare("
+                SELECT * FROM users 
+                WHERE username = :input OR student_number = :input 
+                LIMIT 1
+            ");
+            $stmt->execute([':input' => $login_input]);
             $user = $stmt->fetch();
 
             if ($user && password_verify($password, $user['password_hash'])) {
-                // Set session variables
                 $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
                 $_SESSION['fullname'] = $user['fullname'];
                 $_SESSION['role'] = $user['role'];
                 $_SESSION['program_id'] = $user['program_id'];
+                $_SESSION['student_number'] = $user['student_number'];
 
                 header("Location: dashboard.php");
                 exit();
             } else {
-                $message = "Invalid Full Name or Password.";
-                $statusClass = "error";
+                $error = "Invalid credentials. Please check your username/student number and password.";
             }
         } catch (PDOException $e) {
-            $message = "Database connection error: " . $e->getMessage();
-            $statusClass = "error";
+            $error = "Database error: " . $e->getMessage();
         }
     }
 }
@@ -53,44 +45,33 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reschedule - Log In</title>
+    <title>Reschedule - Login</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body class="form-body">
+<body class="auth-body">
+    <div class="auth-card">
+        <h2>Reschedule Login</h2>
+        <p>Access your timetable and course schedules</p>
 
-    <div class="form-wrapper">
-        <div class="form-header">
-            <div class="brand-logo">Reschedule<span>.</span></div>
-            <h2>Welcome Back</h2>
-            <p>Log in to access your timetable</p>
-        </div>
-
-        <?php if (!empty($message)): ?>
-            <div class="alert-box <?php echo $statusClass; ?>">
-                <?php echo $message; ?>
+        <?php if (!empty($error)): ?>
+            <div class="alert alert-danger" style="background:#fee2e2; color:#991b1b; padding:0.75rem; border-radius:6px; margin-bottom:1rem; font-size:0.85rem;">
+                <?php echo htmlspecialchars($error); ?>
             </div>
         <?php endif; ?>
 
-        <form action="login.php" method="POST" id="loginForm">
+        <form action="login.php" method="POST">
             <div class="form-group">
-                <label for="fullname">Full Name</label>
-                <input type="text" id="fullname" name="fullname" value="<?php echo htmlspecialchars($fullname); ?>" placeholder="e.g. John Doe" required>
+                <label for="username_or_student_number">Username or Student Number</label>
+                <input type="text" id="username_or_student_number" name="username_or_student_number" placeholder="Enter username or student ID" required>
             </div>
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="••••••••" required>
+                <input type="password" id="password" name="password" placeholder="Enter password" required>
             </div>
 
-            <button type="submit" class="btn-submit">Log In</button>
+            <button type="submit" class="btn-submit" style="width: 100%;">Sign In</button>
         </form>
-
-        <div class="form-footer">
-            <p>Don't have an account? <a href="signup.php">Sign Up</a></p>
-            <p><a href="index.php">&larr; Return to Landing Page</a></p>
-        </div>
     </div>
-
-    <script src="js/main.js"></script>
 </body>
 </html>
