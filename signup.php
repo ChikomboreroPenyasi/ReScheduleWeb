@@ -6,29 +6,15 @@ $message = '';
 $statusClass = '';
 $programs = [];
 
-// Fetch available programs for the dropdown menu
+// Fetch available programs directly from the 'programmes' table
 try {
-    // Tries fetching from 'programs' or 'programmes'
-    $programsStmt = $pdo->query("
-        SELECT id, 
-               COALESCE(
-                   NULLIF(program_name, ''), 
-                   NULLIF(name, ''), 
-                   'Program ' || id
-               ) AS program_name 
-        FROM programs 
-        ORDER BY id ASC
-    ");
+    $programsStmt = $pdo->query("SELECT id, name AS program_name FROM programmes ORDER BY name ASC");
     $programs = $programsStmt->fetchAll();
 } catch (PDOException $e) {
-    // Fallback if table is named 'programmes' instead
-    try {
-        $programsStmt = $pdo->query("SELECT id, name AS program_name FROM programmes ORDER BY id ASC");
-        $programs = $programsStmt->fetchAll();
-    } catch (PDOException $ex) {
-        $programs = [];
-    }
+    $message = "Error loading programs: " . $e->getMessage();
+    $statusClass = "error";
 }
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username'] ?? '');
     $student_number = trim($_POST['student_number'] ?? '');
@@ -49,7 +35,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $statusClass = "error";
     } else {
         try {
-            // Check if username already exists
             $checkStmt = $pdo->prepare("SELECT id FROM users WHERE username = :username OR (student_number = :student_number AND student_number IS NOT NULL AND student_number != '')");
             $checkStmt->execute([
                 ':username' => $username,
@@ -60,10 +45,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $message = "Username or Student Number is already registered.";
                 $statusClass = "error";
             } else {
-                // Hash the password securely
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-                // Insert new user
                 $insertStmt = $pdo->prepare("
                     INSERT INTO users (username, student_number, fullname, password_hash, role, program_id)
                     VALUES (:username, :student_number, :fullname, :password_hash, :role, :program_id)
@@ -94,69 +77,161 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reschedule - Sign Up</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        body.auth-page {
+            background-color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 2rem 0;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .auth-container {
+            width: 100%;
+            max-width: 480px;
+            padding: 1rem;
+        }
+        .auth-card {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+        }
+        .auth-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .auth-header h2 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.75rem;
+            color: #0f172a;
+        }
+        .auth-header p {
+            margin: 0;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        .form-group {
+            margin-bottom: 1.1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.4rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #334155;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.7rem 0.9rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            background-color: #fff;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        .btn-primary {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #0284c7;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+        .btn-primary:hover {
+            background-color: #0369a1;
+        }
+        .auth-footer {
+            margin-top: 1.5rem;
+            text-align: center;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+        .auth-footer a {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
 </head>
-<body class="auth-body">
-    <div class="auth-card" style="max-width: 450px;">
-        <h2>Create an Account</h2>
-        <p>Join the Reschedule Portal</p>
-
-        <?php if (!empty($message)): ?>
-            <div class="alert-box <?php echo $statusClass; ?>" style="margin-bottom: 1rem; padding: 0.75rem; border-radius: 6px; font-size: 0.85rem;">
-                <?php echo htmlspecialchars($message); ?>
-            </div>
-        <?php endif; ?>
-
-        <form action="signup.php" method="POST">
-            <div class="form-group">
-                <label for="fullname">Full Name *</label>
-                <input type="text" id="fullname" name="fullname" placeholder="e.g. John Doe" required>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h2>Create Account</h2>
+                <p>Join the Reschedule Portal</p>
             </div>
 
-            <div class="form-group">
-                <label for="username">Username *</label>
-                <input type="text" id="username" name="username" placeholder="Choose a username" required>
+            <?php if (!empty($message)): ?>
+                <div style="background:<?php echo ($statusClass === 'error') ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo ($statusClass === 'error') ? '#991b1b' : '#166534'; ?>; padding:0.75rem; border-radius:6px; margin-bottom:1.25rem; font-size:0.85rem;">
+                    <?php echo htmlspecialchars($message); ?>
+                </div>
+            <?php endif; ?>
+
+            <form action="signup.php" method="POST">
+                <div class="form-group">
+                    <label for="fullname">Full Name *</label>
+                    <input type="text" id="fullname" name="fullname" placeholder="e.g. John Doe" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="username">Username *</label>
+                    <input type="text" id="username" name="username" placeholder="Choose a username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="student_number">Student Number (Required for Students)</label>
+                    <input type="text" id="student_number" name="student_number" placeholder="e.g. 202410982">
+                </div>
+
+                <div class="form-group">
+                    <label for="role">Role *</label>
+                    <select id="role" name="role" required>
+                        <option value="Student">Student</option>
+                        <option value="Lecturer">Lecturer</option>
+                        <option value="Administrator">Administrator</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="program_id">Academic Program</label>
+                    <select id="program_id" name="program_id">
+                        <option value="">Select Program...</option>
+                        <?php foreach ($programs as $prog): ?>
+                            <option value="<?php echo $prog['id']; ?>"><?php echo htmlspecialchars($prog['program_name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password *</label>
+                    <input type="password" id="password" name="password" placeholder="Create password" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password *</label>
+                    <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm password" required>
+                </div>
+
+                <button type="submit" class="btn-primary">Sign Up</button>
+            </form>
+
+            <div class="auth-footer">
+                Already have an account? <a href="login.php">Log In</a>
             </div>
-
-            <div class="form-group">
-                <label for="student_number">Student Number (Required for Students)</label>
-                <input type="text" id="student_number" name="student_number" placeholder="e.g. 202410982">
-            </div>
-
-            <div class="form-group">
-                <label for="role">Role *</label>
-                <select id="role" name="role" required>
-                    <option value="Student">Student</option>
-                    <option value="Lecturer">Lecturer</option>
-                    <option value="Administrator">Administrator</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="program_id">Academic Program</label>
-                <select id="program_id" name="program_id">
-                    <option value="">Select Program...</option>
-                    <?php foreach ($programs as $prog): ?>
-                        <option value="<?php echo $prog['id']; ?>"><?php echo htmlspecialchars($prog['program_name']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="password">Password *</label>
-                <input type="password" id="password" name="password" placeholder="Create password" required>
-            </div>
-
-            <div class="form-group">
-                <label for="confirm_password">Confirm Password *</label>
-                <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm password" required>
-            </div>
-
-            <button type="submit" class="btn-submit" style="width: 100%;">Sign Up</button>
-        </form>
-
-        <p style="margin-top: 1rem; text-align: center; font-size: 0.85rem; color: #64748b;">
-            Already have an account? <a href="login.php" style="color: #2563eb; text-decoration: none; font-weight: 600;">Log In</a>
-        </p>
+        </div>
     </div>
 </body>
 </html>
