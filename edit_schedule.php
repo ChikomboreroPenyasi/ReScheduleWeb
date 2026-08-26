@@ -1,17 +1,14 @@
 <?php
 session_start();
 
+// Import shared database setup (Supabase / Live DB connection)
+require_once 'db.php';
+
 // Auth Guard: Admin and Lecturer access only
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Administrator', 'Lecturer'])) {
     header("Location: login.php");
     exit();
 }
-
-// Database Configuration
-$db_host = 'localhost';
-$db_name = 'reschedule_db';
-$db_user = 'root';
-$db_pass = '';
 
 $message = '';
 $error = '';
@@ -23,12 +20,7 @@ if (!$schedule_id) {
 }
 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-
-    // Fetch programmes for dropdown
+    // Fetch programmes for dropdown using shared $pdo from db.php
     $programmes = $pdo->query("SELECT id, program_code, program_name FROM programmes ORDER BY program_code ASC")->fetchAll();
 
     // Fetch rooms for dropdown
