@@ -45,14 +45,14 @@ function supabase_request($endpoint, $method = 'GET', $data = null) {
 }
 
 
-// --- SUPABASE DIRECT POSTGRESQL PDO CONNECTION ---
-// Get these exact credentials from: Supabase Dashboard -> Project Settings -> Database -> Connection string (URI/PDO)
+// --- SUPABASE IPV4 POOLER PDO CONNECTION ---
+// Configured for Render compatibility using Supabase's transaction pooler
 
-$host = 'db.fxahpgeprmhwowxdrpeo.supabase.co'; // Your project ID host
-$db   = 'postgres';                            // Default database name
-$user = 'postgres';                            // Default user name
-$pass = 'eC0UQPLqSsOYMUuy';           // Replace with your actual database password
-$port = '5432';                                // Port 5432 or 6543 for transaction pooler
+$host = 'aws-1-eu-west-3.pooler.supabase.com'; // Pooled IPv4 host (Update region if different in Supabase Connect modal)
+$db   = 'postgres';                                // Default database name
+$user = 'postgres.fxahpgeprmhwowxdrpeo';           // Pooler username includes your project reference
+$pass = 'eC0UQPLqSsOYMUuy';                        // Your database password
+$port = '6543';                                    // Port 6543 for transaction pooling
 
 $dsn = "pgsql:host=$host;port=$port;dbname=$db;";
 
