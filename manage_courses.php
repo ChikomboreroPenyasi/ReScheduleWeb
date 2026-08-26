@@ -1,27 +1,19 @@
 <?php
 session_start();
 
+// Import shared database setup (Supabase / Live DB connection)
+require_once 'db.php';
+
 // Auth Guard: Admin and Lecturer access only
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Administrator', 'Lecturer'])) {
-    header("Location: dashboard.php");
+    header("Location: login.php");
     exit();
 }
-
-// Database Configuration
-$db_host = 'localhost';
-$db_name = 'reschedule_db';
-$db_user = 'root';
-$db_pass = '';
 
 $message = "";
 $statusClass = "";
 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-
     // Handle Course Creation & Programme Mapping
     if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['create_course'])) {
         $course_code = strtoupper(trim($_POST['course_code'] ?? ''));
@@ -67,10 +59,10 @@ try {
     // Fetch All Programmes grouped by Level
     $programmes = $pdo->query("SELECT id, program_code, program_name, level FROM programmes ORDER BY level ASC, program_code ASC")->fetchAll();
 
-    // Fetch Existing Courses with assigned Programme Codes
+    // Fetch Existing Courses with assigned Programme Codes (PostgreSQL compatible)
     $coursesQuery = "
         SELECT c.id, c.course_code, c.course_name, u.fullname AS lecturer_name,
-               GROUP_CONCAT(DISTINCT p.program_code ORDER BY p.program_code SEPARATOR ', ') AS program_codes
+               STRING_AGG(DISTINCT p.program_code, ', ') AS program_codes
         FROM courses c
         LEFT JOIN users u ON c.lecturer_id = u.id
         LEFT JOIN course_program cp ON c.id = cp.course_id
