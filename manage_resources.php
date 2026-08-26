@@ -1,27 +1,19 @@
 <?php
 session_start();
 
+// Import shared database setup (Supabase / Live DB connection)
+require_once 'db.php';
+
 // Auth & Access Control Guard: Only Logged-in Admins or Lecturers
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['Administrator', 'Lecturer'])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Administrator', 'Lecturer'])) {
     header("Location: dashboard.php");
     exit();
 }
-
-// Database Configuration
-$db_host = 'localhost';
-$db_name = 'reschedule_db';
-$db_user = 'root';
-$db_pass = '';
 
 $message = "";
 $statusClass = "";
 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-
     // Handle Adding a Room
     if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_room'])) {
         $room_name = trim($_POST['room_name'] ?? '');
