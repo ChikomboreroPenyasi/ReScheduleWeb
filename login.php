@@ -12,9 +12,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error = "Please fill in all fields.";
     } else {
         try {
+            // Querying strictly using student_number column
             $stmt = $pdo->prepare("
                 SELECT * FROM users 
-                WHERE username = :input OR student_number = :input 
+                WHERE student_number = :input 
                 LIMIT 1
             ");
             $stmt->execute([':input' => $login_input]);
@@ -22,7 +23,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             if ($user && password_verify($password, $user['password_hash'])) {
                 $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
                 $_SESSION['fullname'] = $user['fullname'];
                 $_SESSION['role'] = $user['role'];
                 $_SESSION['program_id'] = $user['program_id'];
@@ -31,7 +31,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 header("Location: dashboard.php");
                 exit();
             } else {
-                $error = "Invalid credentials. Check username/student number and password.";
+                $error = "Invalid credentials. Check your Student Number/ID and password.";
             }
         } catch (PDOException $e) {
             $error = "Database error: " . $e->getMessage();
@@ -99,7 +99,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             border-radius: 8px;
             font-size: 0.95rem;
             box-sizing: border-box;
-            transition: border-color 0.2s;
         }
         .form-group input:focus {
             outline: none;
@@ -116,7 +115,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             font-weight: 600;
             font-size: 1rem;
             cursor: pointer;
-            transition: background-color 0.2s;
         }
         .btn-primary:hover {
             background-color: #0369a1;
@@ -150,8 +148,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             <form action="login.php" method="POST">
                 <div class="form-group">
-                    <label for="username_or_student_number">Username or Student Number</label>
-                    <input type="text" id="username_or_student_number" name="username_or_student_number" placeholder="Enter username or student ID" required>
+                    <label for="username_or_student_number">Student Number / User ID</label>
+                    <input type="text" id="username_or_student_number" name="username_or_student_number" placeholder="Enter student number or ID" required>
                 </div>
 
                 <div class="form-group">
