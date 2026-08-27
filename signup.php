@@ -6,7 +6,7 @@ $message = '';
 $statusClass = '';
 $programs = [];
 
-// Fetch available programs dynamically handling different column names
+// Fetch available programs directly from the 'programmes' table
 try {
     $programsStmt = $pdo->query("
         SELECT id, 
@@ -27,44 +27,38 @@ try {
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = trim($_POST['username'] ?? '');
-    $student_number = trim($_POST['student_number'] ?? '');
     $fullname = trim($_POST['fullname'] ?? '');
+    $student_number = trim($_POST['student_number'] ?? '');
     $password = trim($_POST['password'] ?? '');
     $confirm_password = trim($_POST['confirm_password'] ?? '');
     $role = $_POST['role'] ?? 'Student';
     $program_id = !empty($_POST['program_id']) ? intval($_POST['program_id']) : null;
 
-    if (empty($username) || empty($fullname) || empty($password)) {
+    if (empty($fullname) || empty($student_number) || empty($password)) {
         $message = "Please fill in all required fields.";
-        $statusClass = "error";
-    } elseif ($role === 'Student' && empty($student_number)) {
-        $message = "Student Number is required for Student accounts.";
         $statusClass = "error";
     } elseif ($password !== $confirm_password) {
         $message = "Passwords do not match.";
         $statusClass = "error";
     } else {
         try {
-            $checkStmt = $pdo->prepare("SELECT id FROM users WHERE username = :username OR (student_number = :student_number AND student_number IS NOT NULL AND student_number != '')");
-            $checkStmt->execute([
-                ':username' => $username,
-                ':student_number' => $student_number
-            ]);
+            // Check if student_number is already registered
+            $checkStmt = $pdo->prepare("SELECT id FROM users WHERE student_number = :student_number LIMIT 1");
+            $checkStmt->execute([':student_number' => $student_number]);
 
             if ($checkStmt->fetch()) {
-                $message = "Username or Student Number is already registered.";
+                $message = "This Student Number/ID is already registered.";
                 $statusClass = "error";
             } else {
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
+                // Insert user saving student_number as primary account identifier
                 $insertStmt = $pdo->prepare("
-                    INSERT INTO users (username, student_number, fullname, password_hash, role, program_id)
-                    VALUES (:username, :student_number, :fullname, :password_hash, :role, :program_id)
+                    INSERT INTO users (student_number, fullname, password_hash, role, program_id)
+                    VALUES (:student_number, :fullname, :password_hash, :role, :program_id)
                 ");
                 $insertStmt->execute([
-                    ':username' => $username,
-                    ':student_number' => !empty($student_number) ? $student_number : null,
+                    ':student_number' => $student_number,
                     ':fullname' => $fullname,
                     ':password_hash' => $hashedPassword,
                     ':role' => $role,
@@ -198,13 +192,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
 
                 <div class="form-group">
-                    <label for="username">Username *</label>
-                    <input type="text" id="username" name="username" placeholder="Choose a username" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="student_number">Student Number (Required for Students)</label>
-                    <input type="text" id="student_number" name="student_number" placeholder="e.g. 202410982">
+                    <label for="student_number">Student Number / User ID *</label>
+                    <input type="text" id="student_number" name="student_number" placeholder="e.g. 202410982" required>
                 </div>
 
                 <div class="form-group">
