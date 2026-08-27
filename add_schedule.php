@@ -11,31 +11,46 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Adminis
 $message = '';
 $error = '';
 
+// Fetch dropdown data from Supabase
+$programmes_res = supabase_request('programmes?select=id,program_code,program_name&order=program_name.asc', 'GET');
+$courses_res    = supabase_request('courses?select=id,course_code,course_name&order=course_code.asc', 'GET');
+$rooms_res      = supabase_request('rooms?select=id,room_name&order=room_name.asc', 'GET');
+
+$programmes = ($programmes_res['status'] === 200 && is_array($programmes_res['data'])) ? $programmes_res['data'] : [];
+$courses    = ($courses_res['status'] === 200 && is_array($courses_res['data'])) ? $courses_res['data'] : [];
+$rooms      = ($rooms_res['status'] === 200 && is_array($rooms_res['data'])) ? $rooms_res['data'] : [];
+
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $programme = $_POST['programme'] ?? $_POST['program_id'] ?? '';
-    $title     = $_POST['course_name'] ?? $_POST['title'] ?? '';
-    $dateTime  = $_POST['date_time'] ?? ($_POST['date'] . ' ' . $_POST['start_time']);
-    $venue     = $_POST['venue'] ?? $_POST['room_id'] ?? '';
-    $type      = $_POST['type'] ?? 'Class';
+    $program_id  = $_POST['program_id'] ?? '';
+    $course_id   = $_POST['course_id'] ?? '';
+    $room_id     = $_POST['room_id'] ?? '';
+    $type        = $_POST['type'] ?? 'Class';
+    $day_of_week = $_POST['day_of_week'] ?? 'Monday';
+    $start_time  = $_POST['start_time'] ?? '';
+    $end_time    = $_POST['end_time'] ?? '';
+    $date        = !empty($_POST['date']) ? $_POST['date'] : null;
 
-    if (empty($programme) || empty($title) || empty($dateTime) || empty($venue)) {
+    if (empty($program_id) || empty($course_id) || empty($room_id) || empty($start_time) || empty($end_time)) {
         $error = "Please fill in all required fields.";
     } else {
-        // Construct payload for Supabase REST API
+        // Construct payload matching database columns
         $payload = [
-            'programme' => $programme,
-            'title'     => $title,
-            'date_time' => $dateTime,
-            'venue'     => $venue,
-            'type'      => $type
+            'program_id'  => (int)$program_id,
+            'course_id'   => (int)$course_id,
+            'room_id'     => (int)$room_id,
+            'type'        => $type,
+            'day_of_week' => $day_of_week,
+            'start_time'  => $start_time,
+            'end_time'    => $end_time,
+            'date'        => $date
         ];
 
         // POST request to Supabase 'schedules' table
         $result = supabase_request('schedules', 'POST', $payload);
 
         if ($result['status'] === 201 || $result['status'] === 200) {
-            $message = "Schedule published successfully to Supabase!";
+            $message = "Schedule published successfully!";
         } else {
             $error = "Error inserting schedule: " . json_encode($result['data']);
         }
@@ -52,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="dashboard-body">
     <main class="dashboard-container">
         <div class="form-container">
-            <h2>Publish Schedule (Supabase)</h2>
+            <h2>Publish Schedule</h2>
             <a href="dashboard.php">&larr; Dashboard</a>
 
             <?php if (!empty($message)): ?>
@@ -63,33 +78,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form action="add_schedule.php" method="POST">
+                <!-- Schedule Category -->
                 <div class="form-group">
                     <label for="type">Schedule Category</label>
-                    <select name="type" id="type" class="form-control">
+                    <select name="type" id="type" class="form-control" required>
                         <option value="Class">Regular Class</option>
                         <option value="CA">Continuous Assessment (CA)</option>
                         <option value="Exam">Final Exam</option>
                     </select>
                 </div>
 
+                <!-- Programme Dropdown -->
                 <div class="form-group">
-                    <label for="programme">Programme Name / Code</label>
-                    <input type="text" name="programme" id="programme" class="form-control" placeholder="e.g. BSc ICT" required>
+                    <label for="program_id">Programme</label>
+                    <select name="program_id" id="program_id" class="form-control" required>
+                        <option value="">-- Select Programme --</option>
+                        <?php foreach ($programmes as $p): ?>
+                            <option value="<?php echo htmlspecialchars($p['id']); ?>">
+                                <?php echo htmlspecialchars(($p['program_code'] ?? '') . ' - ' . ($p['program_name'] ?? '')); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- Course Dropdown -->
+                <div class="form-group">
+                    <label for="course_id">Course</label>
+                    <select name="course_id" id="course_id" class="form-control" required>
+                        <option value="">-- Select Course --</option>
+                        <?php foreach ($courses as $c): ?>
+                            <option value="<?php echo htmlspecialchars($c['id']); ?>">
+                                <?php echo htmlspecialchars(($c['course_code'] ?? '') . ' - ' . ($c['course_name'] ?? '')); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- Venue / Room Dropdown -->
+                <div class="form-group">
+                    <label for="room_id">Venue / Room</label>
+                    <select name="room_id" id="room_id" class="form-control" required>
+                        <option value="">-- Select Venue --</option>
+                        <?php foreach ($rooms as $r): ?>
+                            <option value="<?php echo htmlspecialchars($r['id']); ?>">
+                                <?php echo htmlspecialchars($r['room_name'] ?? ''); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- Day of Week -->
+                <div class="form-group">
+                    <label for="day_of_week">Day of Week</label>
+                    <select name="day_of_week" id="day_of_week" class="form-control" required>
+                        <option value="Monday">Monday</option>
+                        <option value="Tuesday">Tuesday</option>
+                        <option value="Wednesday">Wednesday</option>
+                        <option value="Thursday">Thursday</option>
+                        <option value="Friday">Friday</option>
+                    </select>
+                </div>
+
+                <!-- Start Time & End Time -->
+                <div class="form-group">
+                    <label for="start_time">Start Time</label>
+                    <input type="time" name="start_time" id="start_time" class="form-control" required>
                 </div>
 
                 <div class="form-group">
-                    <label for="title">Course / Title</label>
-                    <input type="text" name="title" id="title" class="form-control" placeholder="e.g. ICT 211 - Web Development" required>
+                    <label for="end_time">End Time</label>
+                    <input type="time" name="end_time" id="end_time" class="form-control" required>
                 </div>
 
+                <!-- Specific Date for Exams/CAs -->
                 <div class="form-group">
-                    <label for="venue">Venue / Room</label>
-                    <input type="text" name="venue" id="venue" class="form-control" placeholder="e.g. Lab 2" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="date_time">Date & Time</label>
-                    <input type="text" name="date_time" id="date_time" class="form-control" placeholder="e.g. 2026-08-30 09:00:00 or Mon 09:00" required>
+                    <label for="date">Date (Optional for Exams/CAs)</label>
+                    <input type="date" name="date" id="date" class="form-control">
                 </div>
 
                 <button type="submit" class="btn-submit">Publish Schedule</button>
