@@ -10,7 +10,6 @@ if (empty($program_id)) {
 }
 
 try {
-    // Join schedules with rooms and courses to fetch displayable names
     $stmt = $pdo->prepare("
         SELECT 
             s.id,
@@ -25,7 +24,7 @@ try {
         FROM schedules s
         LEFT JOIN rooms r ON s.room_id = r.id
         WHERE s.program_id = :program_id
-        ORDER BY s.date ASC, s.start_time ASC
+        ORDER BY s.day_of_week ASC, s.start_time ASC
     ");
     $stmt->execute([':program_id' => $program_id]);
     $schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -34,9 +33,13 @@ try {
     $assessments = [];
 
     foreach ($schedules as $row) {
-        if ($row['type'] === 'Class') {
+        $type = strtolower(trim($row['type'] ?? ''));
+        
+        // Match any variation of 'class', 'lecture', etc.
+        if ($type === 'class' || $type === 'lecture' || empty($type)) {
             $timetable[] = $row;
-        } else if ($row['type'] === 'CA' || $row['type'] === 'Exam') {
+        } else {
+            // 'ca', 'exam', 'quiz', etc.
             $assessments[] = $row;
         }
     }
