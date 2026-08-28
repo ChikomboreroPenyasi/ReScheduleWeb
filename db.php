@@ -50,8 +50,8 @@ function supabase_request($endpoint, $method = 'GET', $data = null) {
 
 $host = 'aws-1-eu-west-3.pooler.supabase.com'; // Pooled IPv4 host (Update region if different in Supabase Connect modal)
 $db   = 'postgres';                                // Default database name
-$user = 'postgres.fxahpgeprmhwowxdrpeo';           // Pooler username includes your project reference
-$pass = 'eC0UQPLqSsOYMUuy';                        // Your database password
+$user = 'postgres.fsnqbmokuvifwgnjrcmw';           // Pooler username includes your project reference
+$pass = 'underdog@6002';                        // Your database password
 $port = '6543';                                    // Port 6543 for transaction pooling
 
 $dsn = "pgsql:host=$host;port=$port;dbname=$db;";
