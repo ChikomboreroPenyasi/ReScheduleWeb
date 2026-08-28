@@ -48,7 +48,7 @@ function supabase_request($endpoint, $method = 'GET', $data = null) {
 // --- SUPABASE IPV4 POOLER PDO CONNECTION ---
 // Configured for Render compatibility using Supabase's transaction pooler
 
-$host = 'aws-1-eu-west-3.pooler.supabase.com'; // Pooled IPv4 host (Update region if different in Supabase Connect modal)
+$host = 'aws-0-eu-west-1.pooler.supabase.com'; // Pooled IPv4 host (Update region if different in Supabase Connect modal)
 $db   = 'postgres';                                // Default database name
 $user = 'postgres.fsnqbmokuvifwgnjrcmw';           // Pooler username includes your project reference
 $pass = 'underdog@6002';                        // Your database password
