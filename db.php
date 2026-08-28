@@ -2,8 +2,8 @@
 // C:\xampp\htdocs\ReSchedule\db.php
 
 // --- SUPABASE REST API CONFIGURATION ---
-define('SUPABASE_URL', 'https://fxahpgeprmhwowxdrpeo.supabase.co');
-define('SUPABASE_KEY', 'sb_publishable_s7K7MqBhl6cPzW-LJfUFhQ_Mfmwnwoo');
+define('SUPABASE_URL', 'https://fsnqbmokuvifwgnjrcmw.supabase.co');
+define('SUPABASE_KEY', 'sb_publishable_yZjMnhFnsLoVmw6RTi7U1Q_qlSt5dVN');
 
 /**
  * Helper function to send requests to Supabase REST API
