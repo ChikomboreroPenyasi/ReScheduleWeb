@@ -10,18 +10,47 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$user_id   = $_SESSION['user_id'];
-$username  = $_SESSION['username'] ?? 'User';
-$fullname  = $_SESSION['fullname'] ?? $username;
-$role      = $_SESSION['role'] ?? 'Student';
+$user_id    = $_SESSION['user_id'];
+$username   = $_SESSION['username'] ?? 'User';
+$fullname   = $_SESSION['fullname'] ?? $username;
+$role       = $_SESSION['role'] ?? 'Student';
 $program_id = $_SESSION['program_id'] ?? null;
 
 $ca_schedules = [];
 $class_schedules = [];
-$error_message = '';
+$message = '';
+$message_type = 'danger';
+
+// Handle Student Reschedule Request Submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'submit_reschedule') {
+    $schedule_id    = intval($_POST['schedule_id'] ?? 0);
+    $reason         = trim($_POST['reason'] ?? '');
+    $preferred_time = trim($_POST['preferred_time'] ?? '');
+
+    if ($schedule_id > 0 && !empty($reason)) {
+        try {
+            $stmt_req = $pdo->prepare("
+                INSERT INTO reschedule_requests (student_id, schedule_id, reason, preferred_time, status)
+                VALUES (:student_id, :schedule_id, :reason, :preferred_time, 'Pending')
+            ");
+            $stmt_req->execute([
+                ':student_id'    => $user_id,
+                ':schedule_id'   => $schedule_id,
+                ':reason'        => $reason,
+                ':preferred_time'=> $preferred_time
+            ]);
+            $message = "Your reschedule request has been submitted successfully!";
+            $message_type = "success";
+        } catch (PDOException $e) {
+            $message = "Database Error: " . $e->getMessage();
+        }
+    } else {
+        $message = "Please provide a valid schedule and reason.";
+    }
+}
 
 try {
-    // 1. Fetch CA & Exam Schedules based on Role
+    // 1. Fetch CA & Exam Schedules
     if ($role === 'Student' && $program_id) {
         $stmt_ca = $pdo->prepare("
             SELECT s.*, COALESCE(c.course_code, s.course_code) AS course_code, 
@@ -46,7 +75,7 @@ try {
     }
     $ca_schedules = $stmt_ca->fetchAll();
 
-    // 2. Fetch Regular Class Schedules based on Role
+    // 2. Fetch Regular Class Schedules
     if ($role === 'Student' && $program_id) {
         $stmt_class = $pdo->prepare("
             SELECT s.*, COALESCE(c.course_code, s.course_code) AS course_code, 
@@ -78,7 +107,7 @@ try {
     $class_schedules = $stmt_class->fetchAll();
 
 } catch (PDOException $e) {
-    $error_message = "Database Error: " . $e->getMessage();
+    $message = "Database Error: " . $e->getMessage();
 }
 ?>
 <!DOCTYPE html>
@@ -90,7 +119,7 @@ try {
     <link rel="stylesheet" href="css/style.css">
     <style>
         .action-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-        .action-card { background: #ffffff; padding: 1.25rem; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center; text-decoration: none; color: #1e293b; transition: all 0.2s ease; }
+        .action-card { background: #ffffff; padding: 1.25rem; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center; text-decoration: none; color: #1e293b; transition: all 0.2s ease; cursor: pointer; }
         .action-card:hover { border-color: #2563eb; transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         .action-card h4 { margin: 0 0 0.5rem 0; color: #2563eb; }
         .action-card p { margin: 0; font-size: 0.85rem; color: #64748b; }
@@ -100,7 +129,18 @@ try {
         .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
         .badge-ca { background: #fef3c7; color: #92400e; }
         .badge-exam { background: #fee2e2; color: #991b1b; }
-        .badge-class { background: #e0f2fe; color: #075985; }
+        .btn-req { background: #2563eb; color: #ffffff; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+        .btn-req:hover { background: #1d4ed8; }
+        
+        /* Modal Styles */
+        .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: #ffffff; padding: 1.5rem; border-radius: 8px; width: 100%; max-width: 450px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .modal-content h3 { margin-top: 0; color: #1e293b; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.3rem; font-weight: 600; color: #475569; font-size: 0.85rem; }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+        .btn-cancel { background: #94a3b8; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body class="dashboard-body">
@@ -120,19 +160,26 @@ try {
             <p>Access your portal tools, active timetable slots, and examination schedules below.</p>
         </header>
 
-        <?php if (!empty($error_message)): ?>
-            <div class="alert alert-danger" style="background:#fee2e2; color:#991b1b; padding:1rem; border-radius:6px; margin-bottom:1.5rem;">
-                <?php echo htmlspecialchars($error_message); ?>
+        <?php if (!empty($message)): ?>
+            <div class="alert" style="background:<?php echo ($message_type === 'success') ? '#dcfce7' : '#fee2e2'; ?>; color:<?php echo ($message_type === 'success') ? '#166534' : '#991b1b'; ?>; padding:1rem; border-radius:6px; margin-bottom:1.5rem;">
+                <?php echo htmlspecialchars($message); ?>
             </div>
         <?php endif; ?>
 
-        <!-- Role-based Navigation & Management Section -->
+        <!-- Quick Actions Grid -->
         <h3 style="margin-bottom: 1rem; color: #334155;">Management & Quick Actions</h3>
         <div class="action-grid">
             <a href="timetable.php" class="action-card">
                 <h4>Master Timetable</h4>
                 <p>View full weekly grid & room allocations</p>
             </a>
+
+            <?php if ($role === 'Student'): ?>
+                <div onclick="openModal()" class="action-card">
+                    <h4>Request Reschedule</h4>
+                    <p>Submit a request to change a class or exam slot</p>
+                </div>
+            <?php endif; ?>
 
             <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
                 <a href="manage_courses.php" class="action-card">
@@ -177,7 +224,7 @@ try {
                                 <th>Date</th>
                                 <th>Time</th>
                                 <th>Venue</th>
-                                <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?><th>Action</th><?php endif; ?>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -193,9 +240,13 @@ try {
                                     <td><?php echo htmlspecialchars($s['date'] ?? 'N/A'); ?></td>
                                     <td><?php echo htmlspecialchars($s['start_time']); ?> - <?php echo htmlspecialchars($s['end_time']); ?></td>
                                     <td><?php echo htmlspecialchars($s['room_name'] ?? 'Unassigned'); ?></td>
-                                    <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
-                                        <td><a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a></td>
-                                    <?php endif; ?>
+                                    <td>
+                                        <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
+                                            <a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a>
+                                        <?php else: ?>
+                                            <button class="btn-req" onclick="openModalFor(<?php echo $s['id']; ?>, '<?php echo htmlspecialchars($s['course_code'] . ' - ' . $s['type']); ?>')">Request Reschedule</button>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -219,7 +270,7 @@ try {
                                 <th>Course Title</th>
                                 <th>Time</th>
                                 <th>Venue</th>
-                                <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?><th>Action</th><?php endif; ?>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -230,9 +281,13 @@ try {
                                     <td><?php echo htmlspecialchars($s['course_name']); ?></td>
                                     <td><?php echo htmlspecialchars($s['start_time']); ?> - <?php echo htmlspecialchars($s['end_time']); ?></td>
                                     <td><?php echo htmlspecialchars($s['room_name'] ?? 'Unassigned'); ?></td>
-                                    <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
-                                        <td><a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a></td>
-                                    <?php endif; ?>
+                                    <td>
+                                        <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
+                                            <a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a>
+                                        <?php else: ?>
+                                            <button class="btn-req" onclick="openModalFor(<?php echo $s['id']; ?>, '<?php echo htmlspecialchars($s['course_code'] . ' - ' . $s['day_of_week']); ?>')">Request Reschedule</button>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -242,6 +297,56 @@ try {
         </div>
 
     </main>
+
+    <!-- Student Reschedule Modal -->
+    <div id="rescheduleModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Submit Reschedule Request</h3>
+            <form method="POST">
+                <input type="hidden" name="action" value="submit_reschedule">
+                
+                <div class="form-group">
+                    <label for="schedule_id">Select Slot</label>
+                    <select name="schedule_id" id="schedule_id" required>
+                        <option value="">-- Choose Slot --</option>
+                        <?php foreach (array_merge($ca_schedules, $class_schedules) as $sc): ?>
+                            <option value="<?php echo $sc['id']; ?>">
+                                <?php echo htmlspecialchars($sc['course_code'] . ' (' . ($sc['day_of_week'] ?? $sc['date']) . ' ' . $sc['start_time'] . ')'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="reason">Reason for Reschedule</label>
+                    <textarea name="reason" id="reason" rows="3" placeholder="Explain clash, emergency, or time conflict..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="preferred_time">Preferred Day / Time (Optional)</label>
+                    <input type="text" name="preferred_time" id="preferred_time" placeholder="e.g. Wednesday after 14:00">
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-req">Submit Request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openModal() {
+            document.getElementById('rescheduleModal').style.display = 'flex';
+        }
+        function closeModal() {
+            document.getElementById('rescheduleModal').style.display = 'none';
+        }
+        function openModalFor(scheduleId) {
+            document.getElementById('schedule_id').value = scheduleId;
+            openModal();
+        }
+    </script>
 
 </body>
 </html>
