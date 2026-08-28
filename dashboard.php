@@ -1,10 +1,8 @@
 <?php
 session_start();
 
-// Import shared database setup
 require_once 'db.php';
 
-// Auth Guard: Ensure user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
@@ -18,6 +16,7 @@ $program_id = $_SESSION['program_id'] ?? null;
 
 $ca_schedules = [];
 $class_schedules = [];
+$my_requests = [];
 $message = '';
 $message_type = 'danger';
 
@@ -106,6 +105,22 @@ try {
     }
     $class_schedules = $stmt_class->fetchAll();
 
+    // 3. Fetch Student's Reschedule Request History
+    if ($role === 'Student') {
+        $stmt_reqs = $pdo->prepare("
+            SELECT r.*, COALESCE(c.course_code, s.course_code) AS course_code,
+                   COALESCE(c.course_name, s.course_name) AS course_name,
+                   s.type, s.day_of_week, s.date, s.start_time, s.end_time
+            FROM reschedule_requests r
+            JOIN schedules s ON r.schedule_id = s.id
+            LEFT JOIN courses c ON s.course_id = c.id
+            WHERE r.student_id = :student_id
+            ORDER BY r.created_at DESC
+        ");
+        $stmt_reqs->execute([':student_id' => $user_id]);
+        $my_requests = $stmt_reqs->fetchAll();
+    }
+
 } catch (PDOException $e) {
     $message = "Database Error: " . $e->getMessage();
 }
@@ -126,9 +141,12 @@ try {
         .schedule-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
         .schedule-table th, .schedule-table td { padding: 0.75rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
         .schedule-table th { background: #f8fafc; font-weight: 600; color: #475569; }
-        .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge { padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
         .badge-ca { background: #fef3c7; color: #92400e; }
         .badge-exam { background: #fee2e2; color: #991b1b; }
+        .badge-pending { background: #fef3c7; color: #b45309; }
+        .badge-approved { background: #dcfce7; color: #15803d; }
+        .badge-rejected { background: #fee2e2; color: #b91c1c; }
         .btn-req { background: #2563eb; color: #ffffff; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
         .btn-req:hover { background: #1d4ed8; }
         
@@ -179,6 +197,10 @@ try {
                     <h4>Request Reschedule</h4>
                     <p>Submit a request to change a class or exam slot</p>
                 </div>
+                <a href="#request-history" class="action-card">
+                    <h4>Request History</h4>
+                    <p>Track status of your submitted requests</p>
+                </a>
             <?php endif; ?>
 
             <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
@@ -207,6 +229,54 @@ try {
                 </a>
             <?php endif; ?>
         </div>
+
+        <?php if ($role === 'Student'): ?>
+        <!-- Student Request History Table -->
+        <div id="request-history" class="dash-card" style="margin-bottom: 2rem;">
+            <h3>My Reschedule Requests</h3>
+            <?php if (empty($my_requests)): ?>
+                <p style="color: #64748b; margin-top: 1rem;">You have not submitted any reschedule requests yet.</p>
+            <?php else: ?>
+                <div style="overflow-x: auto;">
+                    <table class="schedule-table">
+                        <thead>
+                            <tr>
+                                <th>Course</th>
+                                <th>Type</th>
+                                <th>Slot Details</th>
+                                <th>Reason</th>
+                                <th>Preferred Time</th>
+                                <th>Submitted Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($my_requests as $req): ?>
+                                <tr>
+                                    <td><strong><?php echo htmlspecialchars($req['course_code']); ?></strong> - <?php echo htmlspecialchars($req['course_name']); ?></td>
+                                    <td><?php echo htmlspecialchars($req['type']); ?></td>
+                                    <td><?php echo htmlspecialchars($req['day_of_week'] ?? $req['date']); ?> (<?php echo htmlspecialchars($req['start_time']); ?>)</td>
+                                    <td><?php echo htmlspecialchars($req['reason']); ?></td>
+                                    <td><?php echo htmlspecialchars(!empty($req['preferred_time']) ? $req['preferred_time'] : 'None'); ?></td>
+                                    <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($req['created_at']))); ?></td>
+                                    <td>
+                                        <?php 
+                                            $statusClass = 'badge-pending';
+                                            if ($req['status'] === 'Approved') $statusClass = 'badge-approved';
+                                            if ($req['status'] === 'Rejected') $statusClass = 'badge-rejected';
+                                        ?>
+                                        <span class="badge <?php echo $statusClass; ?>">
+                                            <?php echo htmlspecialchars($req['status']); ?>
+                                        </span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
         <!-- CA & Exam Schedule Table -->
         <div class="dash-card" style="margin-bottom: 2rem;">
@@ -244,7 +314,7 @@ try {
                                         <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
                                             <a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a>
                                         <?php else: ?>
-                                            <button class="btn-req" onclick="openModalFor(<?php echo $s['id']; ?>, '<?php echo htmlspecialchars($s['course_code'] . ' - ' . $s['type']); ?>')">Request Reschedule</button>
+                                            <button class="btn-req" onclick="openModalFor(<?php echo $s['id']; ?>)">Request Reschedule</button>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -285,7 +355,7 @@ try {
                                         <?php if (in_array($role, ['Administrator', 'Lecturer'])): ?>
                                             <a href="edit_schedule.php?id=<?php echo $s['id']; ?>" style="color: #2563eb; text-decoration: none; font-weight: 600;">Edit</a>
                                         <?php else: ?>
-                                            <button class="btn-req" onclick="openModalFor(<?php echo $s['id']; ?>, '<?php echo htmlspecialchars($s['course_code'] . ' - ' . $s['day_of_week']); ?>')">Request Reschedule</button>
+                                            <button class="btn-req" onclick="openModalFor(<?php echo $s['id']; ?>)">Request Reschedule</button>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -314,39 +384,3 @@ try {
                                 <?php echo htmlspecialchars($sc['course_code'] . ' (' . ($sc['day_of_week'] ?? $sc['date']) . ' ' . $sc['start_time'] . ')'); ?>
                             </option>
                         <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="reason">Reason for Reschedule</label>
-                    <textarea name="reason" id="reason" rows="3" placeholder="Explain clash, emergency, or time conflict..." required></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label for="preferred_time">Preferred Day / Time (Optional)</label>
-                    <input type="text" name="preferred_time" id="preferred_time" placeholder="e.g. Wednesday after 14:00">
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
-                    <button type="submit" class="btn-req">Submit Request</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        function openModal() {
-            document.getElementById('rescheduleModal').style.display = 'flex';
-        }
-        function closeModal() {
-            document.getElementById('rescheduleModal').style.display = 'none';
-        }
-        function openModalFor(scheduleId) {
-            document.getElementById('schedule_id').value = scheduleId;
-            openModal();
-        }
-    </script>
-
-</body>
-</html>
