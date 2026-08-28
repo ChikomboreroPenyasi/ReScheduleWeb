@@ -147,6 +147,10 @@ try {
                     <h4>Add Schedule Slot</h4>
                     <p>Create new class, CA, or Exam entry</p>
                 </a>
+                <a href="manage_reschedules.php" class="action-card">
+                    <h4>Reschedule Requests</h4>
+                    <p>Review and approve/reject student requests</p>
+                </a>
             <?php endif; ?>
 
             <?php if ($role === 'Administrator'): ?>
