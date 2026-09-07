@@ -22,7 +22,7 @@ try {
         exit();
     }
 
-    // Query year_level and semester directly from the users table
+    // Query standard user columns without assuming extra academic level column names
     $stmt = $pdo->prepare("
         SELECT 
             u.id, 
@@ -31,8 +31,6 @@ try {
             u.fullname, 
             u.role, 
             u.program_id,
-            COALESCE(u.year_level, '1') AS year_level,
-            COALESCE(u.semester, '1') AS semester,
             COALESCE(p.program_name, 'General Studies') AS programme_name
         FROM users u
         LEFT JOIN programmes p ON u.program_id = p.id
@@ -55,8 +53,8 @@ try {
                 'role'           => $user['role'] ?? 'Student',
                 'program_id'     => intval($user['program_id'] ?? 0),
                 'programme_name' => $user['programme_name'],
-                'year'           => (string)$user['year_level'],
-                'semester'       => (string)$user['semester']
+                'year'           => '1',
+                'semester'       => '1'
             ]
         ]);
         exit();
