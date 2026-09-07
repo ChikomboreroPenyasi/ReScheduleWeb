@@ -1,5 +1,4 @@
 <?php
-// Prevent PHP warnings from corrupting the JSON payload
 ob_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -23,7 +22,7 @@ try {
         exit();
     }
 
-    // Query exact database columns: year_level and semester
+    // Query year_level and semester directly from the users table
     $stmt = $pdo->prepare("
         SELECT 
             u.id, 
@@ -31,15 +30,16 @@ try {
             u.password, 
             u.fullname, 
             u.role, 
-            u.program_id, 
-            COALESCE(p.program_name, 'General Studies') AS program_name,
-            COALESCE(p.year_level, '1') AS year_level,
-            COALESCE(p.semester, '1') AS semester
+            u.program_id,
+            COALESCE(u.year_level, '1') AS year_level,
+            COALESCE(u.semester, '1') AS semester,
+            COALESCE(p.program_name, 'General Studies') AS programme_name
         FROM users u
         LEFT JOIN programmes p ON u.program_id = p.id
         WHERE u.username = :username
         LIMIT 1
     ");
+    
     $stmt->execute([':username' => $username]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -54,7 +54,7 @@ try {
                 'fullname'       => $user['fullname'] ?? $user['username'],
                 'role'           => $user['role'] ?? 'Student',
                 'program_id'     => intval($user['program_id'] ?? 0),
-                'programme_name' => $user['program_name'],
+                'programme_name' => $user['programme_name'],
                 'year'           => (string)$user['year_level'],
                 'semester'       => (string)$user['semester']
             ]
