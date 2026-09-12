@@ -29,6 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $day_of_week = $_POST['day_of_week'] ?? 'Monday';
     $start_time  = $_POST['start_time'] ?? '';
     $end_time    = $_POST['end_time'] ?? '';
+    $year_level  = intval($_POST['year_level'] ?? 1);
+    $semester    = intval($_POST['semester'] ?? 1);
     $date        = !empty($_POST['date']) ? $_POST['date'] : null;
 
     if (empty($program_id) || empty($course_id) || empty($room_id) || empty($start_time) || empty($end_time)) {
@@ -43,6 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'day_of_week' => $day_of_week,
             'start_time'  => $start_time,
             'end_time'    => $end_time,
+            'year_level'  => $year_level,
+            'semester'    => $semester,
             'date'        => $date
         ];
 
@@ -66,18 +70,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="dashboard-body">
     <main class="dashboard-container">
-        <div class="form-container">
+        <div class="dash-card style-form-box" style="max-width: 600px; margin: 2rem auto;">
             <h2>Publish Schedule</h2>
-            <a href="dashboard.php">&larr; Dashboard</a>
+            <p><a href="dashboard.php" class="card-link">&larr; Return to Dashboard</a></p>
 
             <?php if (!empty($message)): ?>
-                <div class="alert alert-success"><?php echo htmlspecialchars($message); ?></div>
+                <div class="alert-box success"><?php echo htmlspecialchars($message); ?></div>
             <?php endif; ?>
             <?php if (!empty($error)): ?>
-                <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
+                <div class="alert-box error"><?php echo htmlspecialchars($error); ?></div>
             <?php endif; ?>
 
-            <form action="add_schedule.php" method="POST">
+            <form action="add_schedule.php" method="POST" style="display: grid; gap: 1rem; margin-top: 1rem;">
                 <!-- Schedule Category -->
                 <div class="form-group">
                     <label for="type">Schedule Category</label>
@@ -114,6 +118,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </select>
                 </div>
 
+                <!-- Year Level & Semester -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="year_level">Academic Year Level</label>
+                        <select name="year_level" id="year_level" class="form-control" required>
+                            <option value="1">Year 1</option>
+                            <option value="2">Year 2</option>
+                            <option value="3">Year 3</option>
+                            <option value="4">Year 4</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="semester">Semester</label>
+                        <select name="semester" id="semester" class="form-control" required>
+                            <option value="1">Semester 1</option>
+                            <option value="2">Semester 2</option>
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Venue / Room Dropdown -->
                 <div class="form-group">
                     <label for="room_id">Venue / Room</label>
@@ -140,19 +165,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <!-- Start Time & End Time -->
-                <div class="form-group">
-                    <label for="start_time">Start Time</label>
-                    <input type="time" name="start_time" id="start_time" class="form-control" required>
-                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="start_time">Start Time</label>
+                        <input type="time" name="start_time" id="start_time" class="form-control" required>
+                    </div>
 
-                <div class="form-group">
-                    <label for="end_time">End Time</label>
-                    <input type="time" name="end_time" id="end_time" class="form-control" required>
+                    <div class="form-group">
+                        <label for="end_time">End Time</label>
+                        <input type="time" name="end_time" id="end_time" class="form-control" required>
+                    </div>
                 </div>
 
                 <!-- Specific Date for Exams/CAs -->
                 <div class="form-group">
-                    <label for="date">Date (Optional for Exams/CAs)</label>
+                    <label for="date">Date (Required for Exams/CAs)</label>
                     <input type="date" name="date" id="date" class="form-control">
                 </div>
 
