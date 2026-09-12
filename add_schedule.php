@@ -22,7 +22,7 @@ $rooms      = ($rooms_res['status'] === 200 && is_array($rooms_res['data'])) ? $
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $program_id  = $_POST['program_id'] ?? '';
+    $selected_programmes = $_POST['program_ids'] ?? []; // Array of selected programme IDs
     $course_id   = $_POST['course_id'] ?? '';
     $room_id     = $_POST['room_id'] ?? '';
     $type        = $_POST['type'] ?? 'Class';
@@ -33,30 +33,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $semester    = intval($_POST['semester'] ?? 1);
     $date        = !empty($_POST['date']) ? $_POST['date'] : null;
 
-    if (empty($program_id) || empty($course_id) || empty($room_id) || empty($start_time) || empty($end_time)) {
-        $error = "Please fill in all required fields.";
+    if (empty($selected_programmes) || empty($course_id) || empty($room_id) || empty($start_time) || empty($end_time)) {
+        $error = "Please select at least one programme and fill in all required fields.";
     } else {
-        // Construct payload matching database columns
-        $payload = [
-            'program_id'  => (int)$program_id,
-            'course_id'   => (int)$course_id,
-            'room_id'     => (int)$room_id,
-            'type'        => $type,
-            'day_of_week' => $day_of_week,
-            'start_time'  => $start_time,
-            'end_time'    => $end_time,
-            'year_level'  => $year_level,
-            'semester'    => $semester,
-            'date'        => $date
-        ];
+        $inserted_count = 0;
+        $has_error = false;
 
-        // POST request to Supabase 'schedules' table
-        $result = supabase_request('schedules', 'POST', $payload);
+        // Loop through each selected programme and insert a schedule record
+        foreach ($selected_programmes as $program_id) {
+            $payload = [
+                'program_id'  => (int)$program_id,
+                'course_id'   => (int)$course_id,
+                'room_id'     => (int)$room_id,
+                'type'        => $type,
+                'day_of_week' => $day_of_week,
+                'start_time'  => $start_time,
+                'end_time'    => $end_time,
+                'year_level'  => $year_level,
+                'semester'    => $semester,
+                'date'        => $date
+            ];
 
-        if ($result['status'] === 201 || $result['status'] === 200) {
-            $message = "Schedule published successfully!";
-        } else {
-            $error = "Error inserting schedule: " . json_encode($result['data']);
+            $result = supabase_request('schedules', 'POST', $payload);
+
+            if ($result['status'] === 201 || $result['status'] === 200) {
+                $inserted_count++;
+            } else {
+                $has_error = true;
+                $error = "Error inserting schedule for programme ID {$program_id}: " . json_encode($result['data']);
+                break;
+            }
+        }
+
+        if (!$has_error && $inserted_count > 0) {
+            $message = "Schedule published successfully for {$inserted_count} programme(s)!";
         }
     }
 }
@@ -67,10 +77,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <title>Reschedule - Publish Schedule</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 0.5rem;
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid #cbd5e1;
+            padding: 0.75rem;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+        .checkbox-item {
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+    </style>
 </head>
 <body class="dashboard-body">
     <main class="dashboard-container">
-        <div class="dash-card style-form-box" style="max-width: 600px; margin: 2rem auto;">
+        <div class="dash-card style-form-box" style="max-width: 650px; margin: 2rem auto;">
             <h2>Publish Schedule</h2>
             <p><a href="dashboard.php" class="card-link">&larr; Return to Dashboard</a></p>
 
@@ -92,17 +121,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </select>
                 </div>
 
-                <!-- Programme Dropdown -->
+                <!-- Multiple Programmes Selection -->
                 <div class="form-group">
-                    <label for="program_id">Programme</label>
-                    <select name="program_id" id="program_id" class="form-control" required>
-                        <option value="">-- Select Programme --</option>
+                    <label>Select Programmes (Check all that apply):</label>
+                    <div class="checkbox-grid">
                         <?php foreach ($programmes as $p): ?>
-                            <option value="<?php echo htmlspecialchars($p['id']); ?>">
-                                <?php echo htmlspecialchars(($p['program_code'] ?? '') . ' - ' . ($p['program_name'] ?? '')); ?>
-                            </option>
+                            <label class="checkbox-item">
+                                <input type="checkbox" name="program_ids[]" value="<?php echo htmlspecialchars($p['id']); ?>">
+                                <strong>[<?php echo htmlspecialchars($p['program_code'] ?? ''); ?>]</strong> <?php echo htmlspecialchars($p['program_name'] ?? ''); ?>
+                            </label>
                         <?php endforeach; ?>
-                    </select>
+                    </div>
                 </div>
 
                 <!-- Course Dropdown -->
