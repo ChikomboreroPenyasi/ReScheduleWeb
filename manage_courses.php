@@ -1,7 +1,5 @@
 <?php
 session_start();
-
-// Import shared database setup (Supabase / Live DB connection)
 require_once 'db.php';
 
 // Auth Guard: Admin and Lecturer access only
@@ -14,12 +12,14 @@ $message = "";
 $statusClass = "";
 
 try {
-    // Handle Course Creation & Programme Mapping
+    // Handle Course Creation & Programme/Level Mapping
     if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['create_course'])) {
         $course_code = strtoupper(trim($_POST['course_code'] ?? ''));
         $course_name = trim($_POST['course_name'] ?? '');
         $lecturer_id = intval($_POST['lecturer_id'] ?? 0);
-        $selected_programmes = $_POST['programmes'] ?? []; // Array of program IDs
+        $selected_programmes = $_POST['programmes'] ?? []; 
+        $year_level = intval($_POST['year_level'] ?? 1);
+        $semester   = intval($_POST['semester'] ?? 1);
 
         if (empty($course_code) || empty($course_name)) {
             $message = "Course Code and Course Name are required.";
@@ -37,18 +37,23 @@ try {
             ]);
             $new_course_id = $pdo->lastInsertId();
 
-            // 2. Link Course to Selected Programmes
+            // 2. Link Course to Selected Programmes WITH Year Level & Semester
             if (!empty($selected_programmes) && is_array($selected_programmes)) {
-                $linkStmt = $pdo->prepare("INSERT INTO course_program (course_id, program_id) VALUES (:course_id, :program_id)");
+                $linkStmt = $pdo->prepare("
+                    INSERT INTO course_program (course_id, program_id, year_level, semester) 
+                    VALUES (:course_id, :program_id, :year_level, :semester)
+                ");
                 foreach ($selected_programmes as $prog_id) {
                     $linkStmt->execute([
-                        ':course_id' => $new_course_id,
-                        ':program_id' => intval($prog_id)
+                        ':course_id'  => $new_course_id,
+                        ':program_id' => intval($prog_id),
+                        ':year_level' => $year_level,
+                        ':semester'   => $semester
                     ]);
                 }
             }
 
-            $message = "Course '" . htmlspecialchars($course_code) . "' created and linked to selected programmes!";
+            $message = "Course '" . htmlspecialchars($course_code) . "' created and assigned successfully!";
             $statusClass = "success";
         }
     }
@@ -56,13 +61,13 @@ try {
     // Fetch Lecturers for Dropdown
     $lecturers = $pdo->query("SELECT id, fullname FROM users WHERE role IN ('Lecturer', 'Administrator') ORDER BY fullname ASC")->fetchAll();
 
-    // Fetch All Programmes grouped by Level
+    // Fetch All Programmes
     $programmes = $pdo->query("SELECT id, program_code, program_name, level FROM programmes ORDER BY level ASC, program_code ASC")->fetchAll();
 
-    // Fetch Existing Courses with assigned Programme Codes (PostgreSQL compatible)
+    // Fetch Existing Courses with assigned Programme Codes and Levels
     $coursesQuery = "
         SELECT c.id, c.course_code, c.course_name, u.fullname AS lecturer_name,
-               STRING_AGG(DISTINCT p.program_code, ', ') AS program_codes
+               STRING_AGG(DISTINCT p.program_code || ' (Yr ' || cp.year_level || ', Sem ' || cp.semester || ')', ', ') AS program_codes
         FROM courses c
         LEFT JOIN users u ON c.lecturer_id = u.id
         LEFT JOIN course_program cp ON c.id = cp.course_id
@@ -118,7 +123,7 @@ try {
     <main class="dashboard-container">
         <header class="welcome-banner">
             <h1>Course & Programme Management</h1>
-            <p>Add courses and assign them to degree or diploma programmes.</p>
+            <p>Add courses and assign them to degree or diploma programmes and year levels.</p>
         </header>
 
         <?php if (!empty($message)): ?>
@@ -154,13 +159,34 @@ try {
                     </div>
                 </div>
 
+                <!-- Academic Year Level & Semester Selection -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label for="year_level">Academic Year Level</label>
+                        <select id="year_level" name="year_level" required>
+                            <option value="1">Year 1</option>
+                            <option value="2">Year 2</option>
+                            <option value="3">Year 3</option>
+                            <option value="4">Year 4</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin: 0;">
+                        <label for="semester">Semester</label>
+                        <select id="semester" name="semester" required>
+                            <option value="1">Semester 1</option>
+                            <option value="2">Semester 2</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="form-group" style="margin: 0;">
                     <label>Select Offering Programmes (Check all that apply):</label>
                     <div class="checkbox-grid">
                         <?php foreach ($programmes as $p): ?>
                             <label class="checkbox-item">
                                 <input type="checkbox" name="programmes[]" value="<?php echo $p['id']; ?>">
-                                <strong>[<?php echo htmlspecialchars($p['program_code']); ?>]</strong> <?php echo htmlspecialchars($p['level']); ?>
+                                <strong>[<?php echo htmlspecialchars($p['program_code']); ?>]</strong> <?php echo htmlspecialchars($p['program_name']); ?>
                             </label>
                         <?php endforeach; ?>
                     </div>
@@ -184,7 +210,7 @@ try {
                                 <th style="padding: 0.75rem;">Code</th>
                                 <th style="padding: 0.75rem;">Course Title</th>
                                 <th style="padding: 0.75rem;">Lecturer</th>
-                                <th style="padding: 0.75rem;">Associated Programmes</th>
+                                <th style="padding: 0.75rem;">Associated Programmes & Levels</th>
                             </tr>
                         </thead>
                         <tbody>
